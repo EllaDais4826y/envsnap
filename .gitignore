@@ -1,0 +1,12 @@
+node_modules/
+
+.next/
+.env
+coverage/
+npm-debug.log*
+*.js.map
+*.log
+*.tsbuildinfo
+*.swp
+build/
+*~
