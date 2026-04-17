@@ -58,4 +58,18 @@ describe('diffCommand', () => {
     exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
+
+  it('shows no differences when snapshots are identical', async () => {
+    loadSnapshotSpy
+      .mockResolvedValueOnce(mockSnapshot('snap-a', { FOO: 'bar', BAZ: 'qux' }))
+      .mockResolvedValueOnce(mockSnapshot('snap-b', { FOO: 'bar', BAZ: 'qux' }));
+
+    await diffCommand('snap-a', 'snap-b');
+
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    const output = consoleSpy.mock.calls[0][0] as string;
+    expect(output).toContain('snap-a → snap-b');
+    expect(output).not.toContain('FOO');
+    expect(output).not.toContain('BAZ');
+  });
 });
