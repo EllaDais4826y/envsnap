@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { snapshotCommand } from './commands/snapshot';
-import { diffCommand } from './commands/diff';
+import { registerSnapshotCommand } from './commands/snapshot';
+import { registerDiffCommand } from './commands/diff';
+import { registerRestoreCommand } from './commands/restore';
+import { registerListCommand } from './commands/list';
 
 const program = new Command();
 
 program
   .name('envsnap')
   .description('Snapshot, diff, and restore environment variable configurations')
-  .version('0.1.0');
+  .version('1.0.0');
 
-program.addCommand(snapshotCommand);
-program.addCommand(diffCommand);
+registerSnapshotCommand(program);
+registerDiffCommand(program);
+registerRestoreCommand(program);
+registerListCommand(program);
 
 program.parse(process.argv);
