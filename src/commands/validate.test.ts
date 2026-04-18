@@ -63,6 +63,7 @@ describe('registerValidateCommand', () => {
       program.parseAsync(['node', 'test', 'validate', 'mysnap', '--no-empty'])
     ).rejects.toThrow('exit');
 
+    expect(consoleSpy).toHaveBeenCalledWith('Validation failed.');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
@@ -74,9 +75,12 @@ describe('registerValidateCommand', () => {
 
     await program.parseAsync(['node', 'test', 'validate', 's', '--require', 'A,B', '--forbid', 'SECRET']);
 
-    expect(mockValidateSnapshot).toHaveBeenCalledWith(snap, expect.objectContaining({
-      requiredKeys: ['A', 'B'],
-      forbiddenKeys: ['SECRET'],
-    }));
+    expect(mockValidateSnapshot).toHaveBeenCalledWith(
+      snap,
+      expect.objectContaining({
+        requiredKeys: ['A', 'B'],
+        forbiddenKeys: ['SECRET'],
+      })
+    );
   });
 });
