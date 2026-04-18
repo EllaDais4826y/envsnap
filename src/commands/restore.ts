@@ -4,13 +4,13 @@ import { listSnapshots } from '../snapshot';
 
 export function registerRestoreCommand(program: Command): void {
   program
-    .command('restore <snapshot-name>')
+    .command('restore [snapshot-name]')
     .description('Restore environment variables from a saved snapshot')
     .option('-t, --target <file>', 'Target .env file to write to', '.env')
     .option('-o, --overwrite', 'Overwrite existing variables in target file', false)
     .option('-m, --merge', 'Merge snapshot vars into existing file', false)
     .option('-l, --list', 'List available snapshots', false)
-    .action((snapshotName: string, options) => {
+    .action((snapshotName: string | undefined, options) => {
       if (options.list) {
         const snapshots = listSnapshots();
         if (snapshots.length === 0) {
@@ -20,6 +20,11 @@ export function registerRestoreCommand(program: Command): void {
           snapshots.forEach((s) => console.log(`  - ${s}`));
         }
         return;
+      }
+
+      if (!snapshotName) {
+        console.error('Error: <snapshot-name> is required unless --list is specified.');
+        process.exit(1);
       }
 
       try {
