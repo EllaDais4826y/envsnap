@@ -1,51 +1,50 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { listSnapshots } from './snapshot';
+import { listSnapshots, loadSnapshot } from './snapshot';
 
-export interface HistoryEntry {
+export interface SnapshotHistoryEntry {
   name: string;
-  createdAt: string;
-  size: number;
+  timestamp: number;
+  keyCount: number;
+  keys: string[];
 }
 
-export function getSnapshotHistory(
-  snapshotsDir: string,
-  limit?: number
-): HistoryEntry[] {
+export function getSnapshotHistory(snapshotsDir: string): SnapshotHistoryEntry[] {
   const names = listSnapshots(snapshotsDir);
+  const entries: SnapshotHistoryEntry[] = [];
 
-  const entries: HistoryEntry[] = names.map((name) => {
-    const filePath = path.join(snapshotsDir, `${name}.json`);
-    let createdAt = '';
-    let size = 0;
+  for (const name of names) {
     try {
-      const stat = fs.statSync(filePath);
-      createdAt = stat.birthtime.toISOString();
-      size = stat.size;
+      const snapshot = loadSnapshot(snapshotsDir, name);
+      const keys = Object.keys(snapshot.env);
+      entries.push({
+        name,
+        timestamp: snapshot.timestamp,
+        keyCount: keys.length,
+        keys,
+      });
     } catch {
-      createdAt = new Date(0).toISOString();
+      // skip unreadable snapshots
     }
-    return { name, createdAt, size };
-  });
+  }
 
-  entries.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-
-  return limit !== undefined ? entries.slice(0, limit) : entries;
+  return entries.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export function formatHistoryOutput(entries: HistoryEntry[]): string {
+export function formatHistoryOutput(entries: SnapshotHistoryEntry[]): string {
   if (entries.length === 0) {
     return 'No snapshots found.';
   }
 
-  const header = `${'NAME'.padEnd(30)} ${'CREATED AT'.padEnd(30)} SIZE`;
-  const divider = '-'.repeat(70);
-  const rows = entries.map(
-    (e) =>
-      `${e.name.padEnd(30)} ${e.createdAt.padEnd(30)} ${e.size}B`
-  );
+  const lines: string[] = ['Snapshot History:', ''];
 
-  return [header, divider, ...rows].join('\n');
+  for (const entry of entries) {
+    const date = new Date(entry.timestamp).toISOString();
+    lines.push(`  ${entry.name}`);
+    lines.push(`    Date:   ${date}`);
+    lines.push(`    Keys:   ${entry.keyCount}`);
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
 }

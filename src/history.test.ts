@@ -2,51 +2,45 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getSnapshotHistory, formatHistoryOutput } from './history';
+import { saveSnapshot } from './snapshot';
 
-function makeTmpDir(): string {
+export function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'envsnap-history-'));
 }
 
-function writeSnapshot(dir: string, name: string, content: object): void {
-  fs.writeFileSync(
-    path.join(dir, `${name}.json`),
-    JSON.stringify(content),
-    'utf-8'
-  );
+export function writeSnapshot(
+  dir: string,
+  name: string,
+  env: Record<string, string>,
+  timestamp: number
+): void {
+  saveSnapshot(dir, name, { name, timestamp, env });
 }
 
 describe('getSnapshotHistory', () => {
   it('returns empty array when no snapshots exist', () => {
     const dir = makeTmpDir();
-    const result = getSnapshotHistory(dir);
-    expect(result).toEqual([]);
+    expect(getSnapshotHistory(dir)).toEqual([]);
   });
 
-  it('returns entries for each snapshot', () => {
+  it('returns entries sorted by timestamp descending', () => {
     const dir = makeTmpDir();
-    writeSnapshot(dir, 'snap-a', { NODE_ENV: 'test' });
-    writeSnapshot(dir, 'snap-b', { NODE_ENV: 'prod' });
-    const result = getSnapshotHistory(dir);
-    expect(result).toHaveLength(2);
-    expect(result.map((e) => e.name)).toEqual(
-      expect.arrayContaining(['snap-a', 'snap-b'])
-    );
+    writeSnapshot(dir, 'old', { A: '1' }, 1000);
+    writeSnapshot(dir, 'new', { B: '2', C: '3' }, 2000);
+
+    const history = getSnapshotHistory(dir);
+    expect(history).toHaveLength(2);
+    expect(history[0].name).toBe('new');
+    expect(history[0].keyCount).toBe(2);
+    expect(history[1].name).toBe('old');
+    expect(history[1].keyCount).toBe(1);
   });
 
-  it('respects limit parameter', () => {
+  it('includes keys in each entry', () => {
     const dir = makeTmpDir();
-    writeSnapshot(dir, 'snap-1', {});
-    writeSnapshot(dir, 'snap-2', {});
-    writeSnapshot(dir, 'snap-3', {});
-    const result = getSnapshotHistory(dir, 2);
-    expect(result).toHaveLength(2);
-  });
-
-  it('includes size > 0 for non-empty snapshot files', () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, 'snap-x', { KEY: 'value' });
-    const result = getSnapshotHistory(dir);
-    expect(result[0].size).toBeGreaterThan(0);
+    writeSnapshot(dir, 'snap', { FOO: 'bar', BAZ: 'qux' }, 3000);
+    const history = getSnapshotHistory(dir);
+    expect(history[0].keys).toEqual(expect.arrayContaining(['FOO', 'BAZ']));
   });
 });
 
@@ -55,12 +49,11 @@ describe('formatHistoryOutput', () => {
     expect(formatHistoryOutput([])).toBe('No snapshots found.');
   });
 
-  it('includes entry name in output', () => {
-    const entries = [
-      { name: 'my-snap', createdAt: new Date().toISOString(), size: 128 },
-    ];
+  it('formats entries with name, date, and key count', () => {
+    const entries = [{ name: 'snap1', timestamp: 0, keyCount: 3, keys: ['A', 'B', 'C'] }];
     const output = formatHistoryOutput(entries);
-    expect(output).toContain('my-snap');
-    expect(output).toContain('128B');
+    expect(output).toContain('snap1');
+    expect(output).toContain('Keys:   3');
+    expect(output).toContain('Date:');
   });
 });
