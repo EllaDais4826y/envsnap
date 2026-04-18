@@ -1,26 +1,39 @@
 import { Argv } from 'yargs';
-import * as path from 'path';
-import { getSnapshotHistory, formatHistoryOutput } from '../history';
+import path from 'path';
+import { getSnapshotHistory } from '../history';
 
-export function registerHistoryCommand(yargs: Argv, snapshotsDir: string): Argv {
-  return yargs.command(
-    'history',
-    'Show history of all snapshots',
+export function registerHistoryCommand(yargs: Argv): void {
+  yargs.command(
+    'history <key>',
+    'Show the value history of an environment variable key across snapshots',
     (y) =>
-      y.option('json', {
-        type: 'boolean',
-        description: 'Output as JSON',
-        default: false,
-      }),
-    (argv) => {
-      const entries = getSnapshotHistory(snapshotsDir);
-
-      if (argv.json) {
-        console.log(JSON.stringify(entries, null, 2));
-        return;
+      y
+        .positional('key', {
+          type: 'string',
+          description: 'The environment variable key to look up',
+          demandOption: true,
+        })
+        .option('dir', {
+          type: 'string',
+          description: 'Directory where snapshots are stored',
+          default: path.join(process.cwd(), '.envsnap'),
+        })
+        .option('limit', {
+          type: 'number',
+          description: 'Maximum number of history entries to show',
+        }),
+    async (argv) => {
+      try {
+        const result = await getSnapshotHistory(
+          argv.key as string,
+          argv.dir as string,
+          argv.limit as number | undefined
+        );
+        console.log(result.formatted);
+      } catch (err: any) {
+        console.error(`Error retrieving history: ${err.message}`);
+        process.exit(1);
       }
-
-      console.log(formatHistoryOutput(entries));
     }
   );
 }
