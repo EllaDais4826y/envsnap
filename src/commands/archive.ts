@@ -38,11 +38,16 @@ export function registerArchiveCommand(yargs: Argv): void {
             console.log('No archived snapshots.');
           } else {
             console.log(`Found ${entries.length} archived snapshot(s):`);
-            entries.forEach(e => console.log(`  ${e.name}  (archived: ${e.archivedAt})`));
+            entries.forEach(e => console.log(`  - ${e.name}  (archived: ${e.archivedAt})`));
           }
         }
       } catch (err: any) {
-        console.error(`Error: ${err.message}`);
+        // Distinguish between user errors and unexpected failures
+        if (err.code === 'ENOENT') {
+          console.error(`Error: Snapshot not found - ${err.message}`);
+        } else {
+          console.error(`Error: ${err.message}`);
+        }
         process.exit(1);
       }
     }
