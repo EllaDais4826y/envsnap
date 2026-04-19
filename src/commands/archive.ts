@@ -37,6 +37,7 @@ export function registerArchiveCommand(yargs: Argv): void {
           if (entries.length === 0) {
             console.log('No archived snapshots.');
           } else {
+            console.log(`Found ${entries.length} archived snapshot(s):`);
             entries.forEach(e => console.log(`  ${e.name}  (archived: ${e.archivedAt})`));
           }
         }
