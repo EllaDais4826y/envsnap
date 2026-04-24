@@ -1,77 +1,83 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadSnapshot, listSnapshots } from './snapshot';
 
-export interface SnapshotStats {
+export interface SnapshotStatEntry {
   name: string;
   varCount: number;
   createdAt: string;
-  sizeBytes: number;
 }
 
-export interface StatsReport {
-  totalSnapshots: number;
+export interface SnapshotStats {
+  total: number;
   totalVars: number;
   avgVarsPerSnapshot: number;
-  largestSnapshot: SnapshotStats | null;
-  smallestSnapshot: SnapshotStats | null;
-  mostRecentSnapshot: SnapshotStats | null;
+  largestSnapshot: { name: string; varCount: number } | null;
+  newestSnapshot: { name: string; createdAt: string } | null;
+  oldestSnapshot: { name: string; createdAt: string } | null;
 }
 
-export function getSnapshotStats(snapshotsDir: string, name: string): SnapshotStats {
-  const filePath = path.join(snapshotsDir, `${name}.json`);
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const snapshot = JSON.parse(raw);
-  const sizeBytes = Buffer.byteLength(raw, 'utf-8');
-  const varCount = Object.keys(snapshot.vars ?? {}).length;
-  const createdAt = snapshot.createdAt ?? new Date(fs.statSync(filePath).mtime).toISOString();
-  return { name, varCount, createdAt, sizeBytes };
-}
-
-export function buildStatsReport(snapshotsDir: string): StatsReport {
-  const names = listSnapshots(snapshotsDir);
-  if (names.length === 0) {
-    return {
-      totalSnapshots: 0,
-      totalVars: 0,
-      avgVarsPerSnapshot: 0,
-      largestSnapshot: null,
-      smallestSnapshot: null,
-      mostRecentSnapshot: null,
-    };
+export async function getSnapshotStats(snapshotsDir: string): Promise<SnapshotStats> {
+  if (!fs.existsSync(snapshotsDir)) {
+    return { total: 0, totalVars: 0, avgVarsPerSnapshot: 0, largestSnapshot: null, newestSnapshot: null, oldestSnapshot: null };
   }
 
-  const statsList = names.map((name) => getSnapshotStats(snapshotsDir, name));
-  const totalVars = statsList.reduce((sum, s) => sum + s.varCount, 0);
-  const avgVarsPerSnapshot = Math.round(totalVars / statsList.length);
+  const files = fs.readdirSync(snapshotsDir).filter(f => f.endsWith('.json'));
+  if (files.length === 0) {
+    return { total: 0, totalVars: 0, avgVarsPerSnapshot: 0, largestSnapshot: null, newestSnapshot: null, oldestSnapshot: null };
+  }
 
-  const largestSnapshot = statsList.reduce((a, b) => (a.varCount >= b.varCount ? a : b));
-  const smallestSnapshot = statsList.reduce((a, b) => (a.varCount <= b.varCount ? a : b));
-  const mostRecentSnapshot = statsList.reduce((a, b) =>
-    new Date(a.createdAt) >= new Date(b.createdAt) ? a : b
-  );
+  const entries: SnapshotStatEntry[] = files.map(file => {
+    const raw = fs.readFileSync(path.join(snapshotsDir, file), 'utf-8');
+    const snap = JSON.parse(raw);
+    return {
+      name: snap.name ?? file.replace('.json', ''),
+      varCount: Object.keys(snap.vars ?? {}).length,
+      createdAt: snap.createdAt ?? new Date(0).toISOString(),
+    };
+  });
+
+  const totalVars = entries.reduce((sum, e) => sum + e.varCount, 0);
+  const avgVarsPerSnapshot = totalVars / entries.length;
+
+  const largestSnapshot = entries.reduce((max, e) => e.varCount > max.varCount ? e : max, entries[0]);
+  const sorted = [...entries].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   return {
-    totalSnapshots: statsList.length,
+    total: entries.length,
     totalVars,
     avgVarsPerSnapshot,
-    largestSnapshot,
-    smallestSnapshot,
-    mostRecentSnapshot,
+    largestSnapshot: { name: largestSnapshot.name, varCount: largestSnapshot.varCount },
+    newestSnapshot: { name: sorted[sorted.length - 1].name, createdAt: sorted[sorted.length - 1].createdAt },
+    oldestSnapshot: { name: sorted[0].name, createdAt: sorted[0].createdAt },
   };
 }
 
-export function formatStatsReport(report: StatsReport): string {
-  if (report.totalSnapshots === 0) {
-    return 'No snapshots found.';
-  }
+export function buildStatsReport(stats: SnapshotStats): string {
+  return formatStatsReport(
+    stats.total,
+    stats.totalVars,
+    stats.avgVarsPerSnapshot,
+    stats.largestSnapshot?.name,
+    stats.newestSnapshot?.name,
+    stats.oldestSnapshot?.name,
+  );
+}
+
+export function formatStatsReport(
+  total: number,
+  totalVars: number,
+  avg: number,
+  largest?: string,
+  newest?: string,
+  oldest?: string,
+): string {
   const lines: string[] = [
-    `Total snapshots    : ${report.totalSnapshots}`,
-    `Total variables    : ${report.totalVars}`,
-    `Avg vars/snapshot  : ${report.avgVarsPerSnapshot}`,
-    `Largest snapshot   : ${report.largestSnapshot!.name} (${report.largestSnapshot!.varCount} vars)`,
-    `Smallest snapshot  : ${report.smallestSnapshot!.name} (${report.smallestSnapshot!.varCount} vars)`,
-    `Most recent        : ${report.mostRecentSnapshot!.name} (${report.mostRecentSnapshot!.createdAt})`,
+    `Total Snapshots    : ${total}`,
+    `Total Variables    : ${totalVars}`,
+    `Avg Vars/Snapshot  : ${avg.toFixed(2)}`,
   ];
+  if (largest) lines.push(`Largest Snapshot   : ${largest}`);
+  if (newest)  lines.push(`Newest Snapshot    : ${newest}`);
+  if (oldest)  lines.push(`Oldest Snapshot    : ${oldest}`);
   return lines.join('\n');
 }
