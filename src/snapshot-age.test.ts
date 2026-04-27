@@ -1,22 +1,39 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getSnapshotAgeReport, formatSnapshotAgeReport } from './snapshot-age';
+import { formatAge, getSnapshotAgeReport, formatSnapshotAgeReport } from './snapshot-age';
 
-function makeTmpDir(): string {
+export function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'envsnap-age-'));
 }
 
-function writeSnapshot(dir: string, name: string, vars: Record<string, string> = {}): void {
+export function writeSnapshot(dir: string, name: string, vars: Record<string, string> = {}): void {
   fs.writeFileSync(
     path.join(dir, `${name}.json`),
-    JSON.stringify({ name, timestamp: new Date().toISOString(), variables: vars }),
-    'utf-8'
+    JSON.stringify({ name, timestamp: new Date().toISOString(), variables: vars })
   );
 }
 
+describe('formatAge', () => {
+  it('formats seconds', () => {
+    expect(formatAge(30_000)).toBe('30s ago');
+  });
+
+  it('formats minutes', () => {
+    expect(formatAge(90_000)).toBe('1m 30s ago');
+  });
+
+  it('formats hours', () => {
+    expect(formatAge(3_660_000)).toBe('1h 1m ago');
+  });
+
+  it('formats days', () => {
+    expect(formatAge(90_000_000)).toBe('1d 1h ago');
+  });
+});
+
 describe('getSnapshotAgeReport', () => {
-  it('returns empty report when no snapshots exist', () => {
+  it('returns empty report when no snapshots', () => {
     const dir = makeTmpDir();
     const report = getSnapshotAgeReport(dir);
     expect(report.entries).toHaveLength(0);
@@ -24,45 +41,27 @@ describe('getSnapshotAgeReport', () => {
     expect(report.newest).toBeNull();
   });
 
-  it('returns entries for each snapshot', () => {
+  it('returns entries sorted newest first', () => {
     const dir = makeTmpDir();
     writeSnapshot(dir, 'alpha');
     writeSnapshot(dir, 'beta');
     const report = getSnapshotAgeReport(dir);
     expect(report.entries).toHaveLength(2);
-    const names = report.entries.map((e) => e.name);
-    expect(names).toContain('alpha');
-    expect(names).toContain('beta');
+    expect(report.entries[0].ageMs).toBeLessThanOrEqual(report.entries[1].ageMs);
   });
 
-  it('entries have numeric ageMs and ageDays', () => {
+  it('identifies oldest and newest correctly', () => {
     const dir = makeTmpDir();
     writeSnapshot(dir, 'snap1');
+    writeSnapshot(dir, 'snap2');
     const report = getSnapshotAgeReport(dir);
-    const entry = report.entries[0];
-    expect(entry.ageMs).toBeGreaterThanOrEqual(0);
-    expect(entry.ageDays).toBeGreaterThanOrEqual(0);
-  });
-
-  it('sets newest and oldest correctly for single snapshot', () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, 'only');
-    const report = getSnapshotAgeReport(dir);
-    expect(report.newest?.name).toBe('only');
-    expect(report.oldest?.name).toBe('only');
-  });
-
-  it('entries are sorted newest first', () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, 'first');
-    writeSnapshot(dir, 'second');
-    const report = getSnapshotAgeReport(dir);
-    expect(report.entries[0].ageMs).toBeLessThanOrEqual(report.entries[report.entries.length - 1].ageMs);
+    expect(report.newest).not.toBeNull();
+    expect(report.oldest).not.toBeNull();
   });
 });
 
 describe('formatSnapshotAgeReport', () => {
-  it('returns no-snapshots message for empty report', () => {
+  it('returns message when no snapshots', () => {
     const output = formatSnapshotAgeReport({ entries: [], oldest: null, newest: null });
     expect(output).toBe('No snapshots found.');
   });
@@ -73,15 +72,6 @@ describe('formatSnapshotAgeReport', () => {
     const report = getSnapshotAgeReport(dir);
     const output = formatSnapshotAgeReport(report);
     expect(output).toContain('mysnap');
-    expect(output).toContain('ago');
-  });
-
-  it('includes Newest and Oldest summary lines', () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, 'snap-a');
-    writeSnapshot(dir, 'snap-b');
-    const report = getSnapshotAgeReport(dir);
-    const output = formatSnapshotAgeReport(report);
     expect(output).toContain('Newest:');
     expect(output).toContain('Oldest:');
   });

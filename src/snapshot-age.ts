@@ -6,7 +6,6 @@ export interface SnapshotAgeEntry {
   name: string;
   createdAt: Date;
   ageMs: number;
-  ageDays: number;
   ageLabel: string;
 }
 
@@ -16,15 +15,15 @@ export interface SnapshotAgeReport {
   newest: SnapshotAgeEntry | null;
 }
 
-function formatAge(ms: number): string {
+export function formatAge(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
+  if (days > 0) return `${days}d ${hours % 24}h ago`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m ago`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s ago`;
   return `${seconds}s ago`;
 }
 
@@ -35,14 +34,12 @@ export function getSnapshotAgeReport(snapshotsDir: string): SnapshotAgeReport {
   const entries: SnapshotAgeEntry[] = names.map((name) => {
     const filePath = path.join(snapshotsDir, `${name}.json`);
     const stat = fs.statSync(filePath);
-    const createdAt = stat.birthtime || stat.mtime;
+    const createdAt = stat.birthtime ?? stat.mtime;
     const ageMs = now - createdAt.getTime();
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
     return {
       name,
       createdAt,
       ageMs,
-      ageDays,
       ageLabel: formatAge(ageMs),
     };
   });
