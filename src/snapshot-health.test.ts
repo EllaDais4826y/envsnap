@@ -1,82 +1,88 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { checkSnapshotHealth, formatHealthReport } from "./snapshot-health";
-import { saveSnapshot } from "./snapshot";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { checkSnapshotHealth, formatHealthReport } from './snapshot-health';
 
 function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "envsnap-health-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'envsnap-health-'));
 }
 
-function writeSnapshot(
-  dir: string,
-  name: string,
-  vars: Record<string, string>
-): void {
-  saveSnapshot(dir, { name, vars, createdAt: new Date().toISOString() });
+function writeSnapshot(dir: string, name: string, data: object): void {
+  fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(data));
 }
 
-describe("checkSnapshotHealth", () => {
-  it("returns unhealthy report for missing snapshot", () => {
-    const dir = makeTmpDir();
-    const report = checkSnapshotHealth(dir, "ghost");
-    expect(report.exists).toBe(false);
-    expect(report.readable).toBe(false);
-    expect(report.healthy).toBe(false);
-    expect(report.varCount).toBe(0);
+describe('checkSnapshotHealth', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
   });
 
-  it("returns healthy report for valid snapshot", () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, "prod", { NODE_ENV: "production", PORT: "3000" });
-    const report = checkSnapshotHealth(dir, "prod");
-    expect(report.exists).toBe(true);
-    expect(report.readable).toBe(true);
-    expect(report.healthy).toBe(true);
-    expect(report.varCount).toBe(2);
-    expect(report.hasEmptyValues).toBe(false);
-    expect(report.emptyValueKeys).toEqual([]);
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("detects empty values", () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, "staging", { API_KEY: "", HOST: "localhost" });
-    const report = checkSnapshotHealth(dir, "staging");
-    expect(report.hasEmptyValues).toBe(true);
-    expect(report.emptyValueKeys).toContain("API_KEY");
+  it('returns healthy for a valid snapshot', () => {
+    writeSnapshot(tmpDir, 'snap1', {
+      name: 'snap1',
+      timestamp: new Date().toISOString(),
+      env: { FOO: 'bar', BAZ: 'qux' },
+    });
+    const result = checkSnapshotHealth(tmpDir, 'snap1');
+    expect(result.name).toBe('snap1');
+    expect(result.healthy).toBe(true);
+    expect(result.issues).toHaveLength(0);
   });
 
-  it("reports unhealthy for snapshot with no vars", () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, "empty", {});
-    const report = checkSnapshotHealth(dir, "empty");
-    expect(report.hasVars).toBe(false);
-    expect(report.healthy).toBe(false);
+  it('reports missing env field', () => {
+    writeSnapshot(tmpDir, 'snap2', { name: 'snap2', timestamp: new Date().toISOString() });
+    const result = checkSnapshotHealth(tmpDir, 'snap2');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('Missing env field');
   });
 
-  it("reports file size > 0 for existing snapshot", () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, "sized", { FOO: "bar" });
-    const report = checkSnapshotHealth(dir, "sized");
-    expect(report.fileSizeBytes).toBeGreaterThan(0);
+  it('reports missing timestamp', () => {
+    writeSnapshot(tmpDir, 'snap3', { name: 'snap3', env: { A: '1' } });
+    const result = checkSnapshotHealth(tmpDir, 'snap3');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('Missing timestamp field');
+  });
+
+  it('reports empty env', () => {
+    writeSnapshot(tmpDir, 'snap4', { name: 'snap4', timestamp: new Date().toISOString(), env: {} });
+    const result = checkSnapshotHealth(tmpDir, 'snap4');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('Env is empty');
+  });
+
+  it('reports snapshot not found', () => {
+    const result = checkSnapshotHealth(tmpDir, 'nonexistent');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('Snapshot file not found');
+  });
+
+  it('reports invalid JSON', () => {
+    fs.writeFileSync(path.join(tmpDir, 'bad.json'), 'not json {{');
+    const result = checkSnapshotHealth(tmpDir, 'bad');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('Invalid JSON format');
   });
 });
 
-describe("formatHealthReport", () => {
-  it("includes snapshot name and status", () => {
-    const dir = makeTmpDir();
-    writeSnapshot(dir, "prod", { NODE_ENV: "production" });
-    const report = checkSnapshotHealth(dir, "prod");
+describe('formatHealthReport', () => {
+  it('formats a healthy report', () => {
+    const report = { name: 'snap1', healthy: true, issues: [] };
     const output = formatHealthReport(report);
-    expect(output).toContain("prod");
-    expect(output).toContain("healthy");
-    expect(output).toContain("Var count:");
+    expect(output).toContain('snap1');
+    expect(output).toContain('Healthy');
   });
 
-  it("shows unhealthy for missing snapshot", () => {
-    const dir = makeTmpDir();
-    const report = checkSnapshotHealth(dir, "missing");
+  it('formats an unhealthy report with issues', () => {
+    const report = { name: 'snap2', healthy: false, issues: ['Missing env field', 'Missing timestamp field'] };
     const output = formatHealthReport(report);
-    expect(output).toContain("unhealthy");
+    expect(output).toContain('Unhealthy');
+    expect(output).toContain('Missing env field');
+    expect(output).toContain('Missing timestamp field');
   });
 });
